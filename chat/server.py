@@ -1,82 +1,86 @@
-# -*- coding: utf-8 -*-
 import socket
-import multiprocessing
-import select
-import time
-import sys
+import threading
 
-from server_config import HOST, PORT, BACKLOG
-from server_utils import handle_client
+HOST = '127.0.0.1'
+PORT = 5000
+
+# 그룹 데이터 관리
+groups = {}
+
+def handle_client(conn, addr):
+    """클라이언트 연결 처리"""
+    group_name = None
+    try:
+        conn.sendall("Enter group name: ".encode('utf-8'))
+        group_name = conn.recv(1024).decode('utf-8').strip()
+
+        # 그룹 이름 확인
+        if not group_name:
+            conn.sendall("[ERROR] Group name cannot be empty. Disconnecting...\n".encode('utf-8'))
+            conn.close()
+            return
+
+        # 그룹에 추가
+        if group_name not in groups:
+            groups[group_name] = []
+        groups[group_name].append(conn)
+        print(f"[INFO] {addr} joined group '{group_name}'. Members: {groups[group_name]}")
+
+        conn.sendall(f"[Server] Joined group: {group_name}\n".encode('utf-8'))
+
+        # 메시지 처리 루프
+        while True:
+            data = conn.recv(1024)
+            if not data:
+                break
+
+            message = data.decode('utf-8').strip()
+            if message.lower() == '/quit':
+                print(f"[INFO] {addr} left group '{group_name}'")
+                break
+
+            # 메시지 브로드캐스트
+            broadcast_message(group_name, f"{addr}: {message}", conn)
+
+    except Exception as e:
+        print(f"[ERROR] {addr}: {e}")
+    finally:
+        # 그룹에서 제거
+        if group_name and group_name in groups:
+            groups[group_name].remove(conn)
+            if not groups[group_name]:  # 그룹이 비어 있으면 삭제
+                del groups[group_name]
+        conn.close()
+        print(f"[INFO] Connection closed: {addr}")
+
+def broadcast_message(group_name, message, sender_conn):
+    """그룹 내 메시지 브로드캐스트"""
+    if group_name in groups:
+        for client in groups[group_name]:
+            if client != sender_conn:
+                try:
+                    client.sendall(f"{message}\n".encode('utf-8'))
+                except Exception as e:
+                    print(f"[ERROR] Failed to send message: {e}")
+                    groups[group_name].remove(client)
 
 def main():
-    # 자식 → 메인 통신용 큐
-    manager = multiprocessing.Manager()
-    message_queue = manager.Queue()  # (conn, message) 받는 용도
-    close_queue = manager.Queue()    # conn(닫힌 소켓)을 받는 용도
-
-    # 메인 프로세스에서 관리할 소켓 리스트(일반 리스트로 사용)
-    client_sockets = []
-
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
-    server_socket.listen(BACKLOG)
-
-    print(f"[+] Server running: {HOST}:{PORT}")
-
-    # 논블로킹/이벤트 드리븐으로 만드는 경우 select 등을 쓸 수 있음(선택사항)
-    server_socket.setblocking(False)
+    server_socket.listen(5)
+    print(f"[INFO] Server running on {HOST}:{PORT}")
 
     try:
         while True:
-            # 1) 클라이언트 accept (논블로킹)
-            try:
-                conn, addr = server_socket.accept()
-                print(f"[ACCEPT] New Connection: {addr}")
-                client_sockets.append(conn)
-
-                p = multiprocessing.Process(
-                    target=handle_client,
-                    args=(conn, addr, message_queue, close_queue)
-                )
-                p.daemon = True
-                p.start()
-
-            except BlockingIOError:
-                # accept()가 블로킹이 아니므로, 연결이 없으면 예외 발생 → 무시
-                pass
-
-            # 2) 자식 프로세스가 보낸 메시지(message_queue) 처리
-            #    (conn, message)를 받아서 모든 client_sockets에 브로드캐스트
-            while not message_queue.empty():
-                sender_conn, msg = message_queue.get()
-                for cs in client_sockets[:]:
-                    try:
-                        cs.sendall(msg.encode('utf-8'))
-                    except:
-                        # 전송 실패 → 제거
-                        client_sockets.remove(cs)
-                        cs.close()
-
-            # 3) 자식 프로세스가 보낸 소켓 종료(close_queue) 처리
-            while not close_queue.empty():
-                closed_conn = close_queue.get()
-                if closed_conn in client_sockets:
-                    client_sockets.remove(closed_conn)
-                    closed_conn.close()
-
-            # CPU 점유를 너무 많이 하지 않도록 잠깐 쉼
-            time.sleep(0.01)
+            conn, addr = server_socket.accept()
+            print(f"[INFO] New connection: {addr}")
+            threading.Thread(target=handle_client, args=(conn, addr)).start()
 
     except KeyboardInterrupt:
-        print("\n[+] Server exit...")
-
+        print("[INFO] Server shutting down...")
     finally:
         server_socket.close()
-        for cs in client_sockets:
-            cs.close()
-        print("[+] Done.")
-
 
 if __name__ == "__main__":
     main()
