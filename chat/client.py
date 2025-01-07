@@ -6,19 +6,18 @@ HOST = '127.0.0.1'
 PORT = 5000
 
 def receive_messages(sock):
-    print(f"[DEBUG] Started receive_messages with socket: {sock}")
+    """서버로부터 메시지를 지속적으로 수신"""
     while True:
         try:
             data = sock.recv(1024)
             if not data:
                 print("[DISCONNECTED] Connection to server lost.")
                 break
-            print(f"[DEBUG] Received message: {data.decode('utf-8').strip()}")
+            # 디버깅 메시지 제거하고 순수 메시지 출력
+            print(data.decode('utf-8').strip())
         except Exception as e:
             print(f"[ERROR] Failed to receive message: {e}")
             break
-
-
 
 def main():
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -33,10 +32,12 @@ def main():
             return
         client_socket.sendall(group_name.encode('utf-8'))
 
+        # 메시지 수신용 스레드 시작
         thread = threading.Thread(target=receive_messages, args=(client_socket,))
         thread.daemon = True
         thread.start()
 
+        # 메시지 입력 및 전송 루프
         while True:
             try:
                 message = input().strip()
