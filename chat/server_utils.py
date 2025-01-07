@@ -17,7 +17,7 @@ def handle_client(conn, addr, message_queue, close_queue):
 
         # 입장 메시지
         welcome_msg = f"\n[Server] {username} Joined.\n"
-        message_queue.put((conn, welcome_msg))  
+        message_queue.put((None, welcome_msg))  
         # 큐에는 (소켓, 메시지) 튜플 형태로 보냄
         # 혹은 소켓 없이 메시지만 보내고, 브로드캐스트 시점엔 메인에서 전송
 
@@ -30,7 +30,7 @@ def handle_client(conn, addr, message_queue, close_queue):
             if msg.lower() == '/quit':
                 quit_msg = f"\n[Server] {username} left.\n"
                 # 종료 메시지 보내고 루프 종료
-                message_queue.put((conn, quit_msg))
+                message_queue.put((None, quit_msg))
                 break
 
             # 일반 채팅 메시지
