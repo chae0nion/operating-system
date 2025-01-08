@@ -12,10 +12,7 @@ This project aims to implement a **CLI-based chat server and client** under the 
   
 - **Ensure Reliable Network Communication**
   - Implement stable communication channels between server and clients using TCP/UDP socket programming.
-  - Handle errors and special cases (e.g., connection failures, disconnections) through well-defined exception handling.
-  
-- **Facilitate Inter-Process Communication (IPC)**
-  - Employ shared memory, pipes, or message queues for efficient data sharing between processes.
+  - Handle errors and special cases (e.g., connection failures, disconnections) through well-defined exception 
 
 ## Key Features
 - **Real-Time Messaging**
@@ -42,6 +39,6 @@ This project aims to implement a **CLI-based chat server and client** under the 
 
 ## Technologies Used
 - **Programming Language:** [Specify Language, e.g., Python, C/C++]
-- **Concurrency:** Multithreading or Multiprocessing
+- **Concurrency:** Multithreading
 - **Networking:** TCP/UDP Socket Programming
-- **IPC Mechanisms:** Shared Memory, Pipes, Message Queues
+  
