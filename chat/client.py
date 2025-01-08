@@ -6,14 +6,14 @@ HOST = '127.0.0.1'
 PORT = 5000
 
 def receive_messages(sock):
-    """서버로부터 메시지를 지속적으로 수신"""
+    """Continuosly receive message from the server"""
     while True:
         try:
             data = sock.recv(1024)
             if not data:
                 print("[DISCONNECTED] Connection to server lost.")
                 break
-            # 디버깅 메시지 제거하고 순수 메시지 출력
+            # Remove debug message and display clean message
             print(data.decode('utf-8').strip())
         except Exception as e:
             print(f"[ERROR] Failed to receive message: {e}")
@@ -25,6 +25,13 @@ def main():
         client_socket.connect((HOST, PORT))
         print(f"[CONNECTED] Connected to {HOST}:{PORT}")
 
+        nickname = input("Enter your nickname: ").strip() # Enter nickname
+        if not nickname:
+            print("[ERROR] Nickname cannot be empty.")
+            client_socket.close()
+            return
+        client_socket.sendall(nickname.encode('utf-8'))  # Send nickname to server
+        
         group_name = input("Enter group name: ").strip()
         if not group_name:
             print("[ERROR] Group name cannot be empty.")
@@ -32,12 +39,12 @@ def main():
             return
         client_socket.sendall(group_name.encode('utf-8'))
 
-        # 메시지 수신용 스레드 시작
+        # Start threading to receive message
         thread = threading.Thread(target=receive_messages, args=(client_socket,))
         thread.daemon = True
         thread.start()
 
-        # 메시지 입력 및 전송 루프
+        # Input message and send loop
         while True:
             try:
                 message = input().strip()
