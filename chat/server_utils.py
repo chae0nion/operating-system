@@ -1,46 +1,83 @@
-# -*- coding: utf-8 -*-
+import time
 import socket
-import multiprocessing
+from datetime import datetime
 
-def handle_client(conn, addr, message_queue, close_queue):
-    """
-    클라이언트와의 통신을 담당하는 자식 프로세스용 함수.
-      - 메시지 수신 → message_queue로 전달
-      - 종료 시점에 close_queue로 "소켓 닫힘" 이벤트 전달
-    """
-    print(f"[+] Added User: {addr}")
+groups = {}
+nicknames = {}
+
+def handle_client(conn, addr):
+    """Handle client connection"""
+    group_name = None
+
     try:
-        # 사용자명 요청
-        prompt = "nickname: "
-        conn.sendall(prompt.encode('utf-8'))
-        username = conn.recv(1024).decode('utf-8').strip()
+        conn.sendall("Enter your nickname: ".encode('utf-8')) # Enter nickname
+        nickname = conn.recv(1024).decode('utf-8').strip()
+        if not nickname:
+            conn.sendall("[ERROR] Nickname cannot be empty. Disconnecting...\n".encode('utf-8'))
+            conn.close()
+            return
+        nicknames[conn] = nickname
+        
+        conn.sendall("Enter group name: ".encode('utf-8'))
+        group_name = conn.recv(1024).decode('utf-8').strip()
 
-        # 입장 메시지
-        welcome_msg = f"\n[Server] {username} Joined.\n"
-        message_queue.put((None, welcome_msg))  
-        # 큐에는 (소켓, 메시지) 튜플 형태로 보냄
-        # 혹은 소켓 없이 메시지만 보내고, 브로드캐스트 시점엔 메인에서 전송
+        # Check group name
+        if not group_name:
+            conn.sendall("[ERROR] Group name cannot be empty. Disconnecting...\n".encode('utf-8'))
+            conn.close()
+            return
 
+        # Add to group
+        if group_name not in groups:
+            groups[group_name] = []
+        groups[group_name].append(conn)
+        print(f"[INFO] {addr} joined group '{group_name}'. Members: {groups[group_name]}")
+
+        conn.sendall(f"\n[Server] Welcome, {nickname}! You have Joined group: {group_name}\n".encode('utf-8'))
+
+        # Message handling loop
         while True:
             data = conn.recv(1024)
             if not data:
                 break
 
-            msg = data.decode('utf-8').strip()
-            if msg.lower() == '/quit':
-                quit_msg = f"\n[Server] {username} left.\n"
-                # 종료 메시지 보내고 루프 종료
-                message_queue.put((None, quit_msg))
+            message = data.decode('utf-8').strip()
+            if message.lower() == '/quit':
+                print(f"[INFO] {addr} ({nickname}) left group '{group_name}'")
+                quit_msg = f"[{get_time()}] [Server] {nickname} has left the group.\n"
+                broadcast_message(group_name, quit_msg, conn)
                 break
 
-            # 일반 채팅 메시지
-            chat_msg = f"{username}: {msg}\n"
-            message_queue.put((conn, chat_msg))
+            # Broadcast message
+            chat_msg = f"[{get_time()}] {nickname}: {message}\n"
+            broadcast_message(group_name, chat_msg, conn)
 
     except Exception as e:
-        print(f"[-] Error({addr}): {e}")
+        print(f"[ERROR] {addr} ({nickname}): {e}")
     finally:
+        # Clean up
+        if group_name and group_name in groups:
+            groups[group_name].remove(conn)
+            if not groups[group_name]:  # Delete group if empty
+                del groups[group_name]
         conn.close()
-        # 메인 프로세스에게 "이 소켓이 닫혔다"고 알림
-        close_queue.put(conn)
-        print(f"[-] socket closed: {addr}")
+        print(f"[INFO] Connection closed: {addr} ({nickname})")
+
+
+def broadcast_message(group_name, message, sender_conn):
+    """Broadcast message within a group"""
+    if group_name in groups:
+        start_time = time.time()  # Broadcast start time
+        for client in groups[group_name]:
+            if client != sender_conn:
+                try:
+                    client.sendall(f"{message}\n".encode('utf-8'))
+                except Exception as e:
+                    print(f"[ERROR] Failed to send message: {e}")
+                    groups[group_name].remove(client)
+        end_time = time.time()  # Broadcast end time
+        print(f"[INFO] Broadcasted message to group '{group_name}' in {end_time - start_time:.4f} seconds")
+
+def get_time():
+    """Get current time as a formatted string"""
+    return datetime.now().strftime('%m-%d %H:%M')
